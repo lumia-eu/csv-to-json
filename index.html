@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0a0d12">
+<meta name="description" content="Конвертер розкладу групи Е2-24 з CSV у JSON">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Е2-24">
+<title>CSV → JSON</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Unbounded:wght@400;700;900&display=swap');
+
+  :root {
+    --bg: #0a0d12;
+    --surface: #111520;
+    --card: #161c2a;
+    --border: #1e2a3d;
+    --accent: #3b82f6;
+    --accent2: #06b6d4;
+    --success: #22c55e;
+    --error: #ef4444;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --code-bg: #0d1117;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'JetBrains Mono', monospace;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(59,130,246,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(59,130,246,0.04) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+  }
+
+  /* Header */
+  header {
+    margin-bottom: 48px;
+  }
+
+  .badge {
+    display: inline-block;
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--accent2);
+    border: 1px solid var(--accent2);
+    padding: 3px 10px;
+    border-radius: 2px;
+    margin-bottom: 16px;
+  }
+
+  h1 {
+    font-family: 'Unbounded', sans-serif;
+    font-size: clamp(26px, 5vw, 40px);
+    font-weight: 900;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    background: linear-gradient(135deg, #e2e8f0 0%, var(--accent) 60%, var(--accent2) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .subtitle {
+    margin-top: 10px;
+    color: var(--muted);
+    font-size: 12px;
+    letter-spacing: 0.05em;
+  }
+
+  /* Upload zone */
+  .upload-zone {
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+    padding: 48px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s, transform 0.15s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .upload-zone::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 0%, rgba(59,130,246,0.07) 0%, transparent 70%);
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  .upload-zone:hover,
+  .upload-zone.drag-over {
+    border-color: var(--accent);
+    background: var(--card);
+    transform: translateY(-2px);
+  }
+
+  .upload-zone:hover::before,
+  .upload-zone.drag-over::before {
+    opacity: 1;
+  }
+
+  .upload-icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+    display: block;
+    filter: drop-shadow(0 0 16px rgba(59,130,246,0.4));
+    animation: float 3s ease-in-out infinite;
+  }
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-6px); }
+  }
+
+  .upload-title {
+    font-family: 'Unbounded', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+
+  .upload-hint {
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.05em;
+  }
+
+  #fileInput {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* Status */
+  .status {
+    margin-top: 16px;
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-size: 12px;
+    display: none;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .status.success {
+    display: flex;
+    background: rgba(34, 197, 94, 0.1);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    color: var(--success);
+  }
+
+  .status.error {
+    display: flex;
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: var(--error);
+  }
+
+  /* Result section */
+  .result-section {
+    margin-top: 32px;
+    display: none;
+  }
+
+  .result-section.visible {
+    display: block;
+    animation: slideUp 0.4s ease;
+  }
+
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .result-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .result-title {
+    font-family: 'Unbounded', sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent2);
+  }
+
+  .stats {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .stat {
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .stat span {
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  /* Buttons */
+  .btn-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+
+  button {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 10px 20px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
+    box-shadow: 0 0 24px rgba(59,130,246,0.25);
+  }
+
+  .btn-primary:hover {
+    background: #2563eb;
+    box-shadow: 0 0 32px rgba(59,130,246,0.45);
+    transform: translateY(-1px);
+  }
+
+  .btn-secondary {
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--border);
+  }
+
+  .btn-secondary:hover {
+    color: var(--text);
+    border-color: var(--muted);
+  }
+
+  /* JSON output */
+  #jsonOutput {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px;
+    font-size: 12px;
+    line-height: 1.7;
+    overflow-x: auto;
+    overflow-y: auto;
+    max-height: 520px;
+    white-space: pre;
+    color: #a8b8d0;
+    position: relative;
+  }
+
+  /* JSON syntax coloring */
+  .json-key   { color: #79c0ff; }
+  .json-str   { color: #a5d6ff; }
+  .json-num   { color: #f2cc60; }
+  .json-bool  { color: #ff7b72; }
+  .json-null  { color: var(--muted); }
+  .json-punct { color: #6e7681; }
+
+  /* Day cards preview */
+  .days-preview {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 10px;
+    margin-top: 20px;
+  }
+
+  .day-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    transition: border-color 0.2s;
+  }
+
+  .day-card:hover {
+    border-color: var(--accent);
+  }
+
+  .day-name {
+    font-family: 'Unbounded', sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--accent2);
+    margin-bottom: 6px;
+  }
+
+  .day-lessons {
+    font-size: 10px;
+    color: var(--muted);
+  }
+
+  .day-lessons strong {
+    color: var(--text);
+    display: block;
+    font-weight: 400;
+    font-size: 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* URL section */
+  .url-section {
+    margin-top: 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 24px;
+  }
+
+  .url-label {
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent2);
+    margin-bottom: 10px;
+  }
+
+  .url-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  #sheetsUrl {
+    flex: 1;
+    min-width: 200px;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  #sheetsUrl:focus {
+    border-color: var(--accent);
+  }
+
+  #sheetsUrl::placeholder {
+    color: var(--muted);
+    font-size: 10px;
+  }
+
+  .btn-url {
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: #fff;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    padding: 10px 18px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: opacity 0.15s, transform 0.15s;
+  }
+
+  .btn-url:hover {
+    opacity: 0.9;
+    transform: translateY(-1px);
+  }
+
+  .url-hint {
+    margin-top: 8px;
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+  }
+
+  /* Footer */
+  footer {
+    margin-top: 48px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+    text-align: center;
+  }
+
+  footer span { color: var(--accent2); }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <div class="badge">Утиліта / CSV → JSON</div>
+    <h1>Розклад<br>Е2-24</h1>
+    <p class="subtitle">// Завантажте CSV-файл експортований з Google Sheets</p>
+  </header>
+
+  <!-- Upload Zone -->
+  <div class="upload-zone" id="dropZone">
+    <input type="file" id="fileInput" accept=".csv,text/csv">
+    <span class="upload-icon">📂</span>
+    <div class="upload-title">Перетягніть CSV або натисніть</div>
+    <div class="upload-hint">Підтримується лише формат .csv · Тільки група Е2-24</div>
+  </div>
+
+  <div class="status" id="statusMsg"></div>
+
+  <!-- Result -->
+  <div class="result-section" id="resultSection">
+    <div class="result-header">
+      <div class="result-title">// Результат JSON</div>
+      <div class="stats" id="statsRow"></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn-primary" onclick="downloadJSON()">⬇ Скачати JSON</button>
+      <button class="btn-secondary" onclick="copyJSON()">⎘ Копіювати</button>
+    </div>
+    <div id="jsonOutput"></div>
+    <div class="days-preview" id="daysPreview"></div>
+  </div>
+
+  <!-- Google Sheets URL input -->
+  <div class="url-section">
+    <div class="url-label">// або вставте посилання на Google Sheets</div>
+    <div class="url-row">
+      <input type="text" id="sheetsUrl" placeholder="https://docs.google.com/spreadsheets/d/…/edit?gid=…" spellcheck="false">
+      <button class="btn-url" onclick="fetchFromSheets()">⬇ Завантажити</button>
+    </div>
+    <div class="url-hint">Посилання буде конвертовано у CSV-експорт і одразу скачано на ваш ПК</div>
+  </div>
+
+  <footer>Працює повністю офлайн · без серверів · <span>Е2-24</span> only</footer>
+</div>
+
+<script>
+// Day mapping: Ukrainian day abbreviations → full names
+const DAY_MAP = {
+  'Пн': 'Понедельник',
+  'Вт': 'Вторник',
+  'Ср': 'Среда',
+  'Чт': 'Четверг',
+  'Пт': 'Пятница',
+  'Нд': 'Воскресенье',
+  'Сб': 'Суббота',
+};
+
+// ─── Виробниче навчання hardcoded template ────────────────────────────────────
+const VIROBN_TEMPLATE = [
+  "Виробниче навчання", "(08:00 - 08:45)",
+  "Виробниче навчання", "(08:55 - 09:40)",
+  "Виробниче навчання", "(09:50 - 10:35)",
+  "Виробниче навчання", "(11:00 - 11:45)",
+  "Виробниче навчання", "(11:55 - 12:40)",
+  "Виробниче навчання", "(12:50 - 13:35)",
+];
+
+// Keywords that indicate "production training" day
+const VIROBN_KEYWORDS = ['виробниче навч', 'в.н. на виробн', 'виробн'];
+
+function isVirobnacheDay(dayArr) {
+  // If first subject matches production-training keywords → replace whole day
+  if (dayArr.length === 0) return false;
+  const first = (dayArr[0] || '').toLowerCase();
+  return VIROBN_KEYWORDS.some(k => first.includes(k));
+}
+
+let resultJSON = null;
+
+// ─── CSV Parsing ─────────────────────────────────────────────────────────────
+function parseCSV(text) {
+  // Split into rows, respecting quoted fields
+  const rows = [];
+  const lines = text.split('\n');
+  for (const line of lines) {
+    rows.push(parseCSVRow(line));
+  }
+  return rows;
+}
+
+function parseCSVRow(line) {
+  const result = [];
+  let cur = '';
+  let inQuote = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      inQuote = !inQuote;
+    } else if (ch === ',' && !inQuote) {
+      result.push(cur.trim());
+      cur = '';
+    } else {
+      cur += ch;
+    }
+  }
+  result.push(cur.trim());
+  return result;
+}
+
+// ─── Full time slot grid (standard schedule) ─────────────────────────────────
+const TIME_SLOTS = [
+  "(08:30 - 09:15)",
+  "(09:25 - 10:10)",
+  "(10:20 - 11:05)",
+  "(11:25 - 12:10)",
+  "(12:40 - 13:25)",
+  "(13:35 - 14:20)",
+  "(14:30 - 15:15)",
+  "(15:25 - 16:10)",
+];
+
+// Fill missing slots at the START of a day with "Урок відсутній"
+// Only fills gaps before the first real lesson — not gaps in the middle or end
+function fillMissingSlots(dayArr) {
+  if (!dayArr || dayArr.length === 0) return dayArr;
+
+  // Find what time the day starts
+  const firstTime = dayArr[1]; // second element is always the time of first entry
+  const firstSlotIdx = TIME_SLOTS.indexOf(firstTime);
+
+  // If it starts from slot 0 — nothing to fill
+  if (firstSlotIdx <= 0) return dayArr;
+
+  // Build missing prefix
+  const prefix = [];
+  for (let i = 0; i < firstSlotIdx; i++) {
+    prefix.push('Урок відсутній');
+    prefix.push(TIME_SLOTS[i]);
+  }
+
+  return [...prefix, ...dayArr];
+}
+
+// ─── Time extraction ──────────────────────────────────────────────────────────
+function extractTime(row) {
+  // Column 2 = "год" (time)
+  const raw = (row[2] || '').trim();
+  // Normalize: 08:30- 09:15 or 8:30 - 9:15 etc.
+  const m = raw.match(/(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})/);
+  if (!m) return null;
+  const pad = t => t.padStart(5, '0');
+  return `(${pad(m[1])} - ${pad(m[2])})`;
+}
+
+// ─── Auditorium formatting ───────────────────────────────────────────────────
+function formatAud(raw) {
+  if (!raw) return null;
+  // raw might be: "32*2", "С/М_1", "44", "С/З_2"
+  const aud = raw.trim().replace(/\*/g, '-');
+  return aud;
+}
+
+// ─── Subject extraction for Е2-24 ────────────────────────────────────────────
+// The CSV sometimes has split entries like:
+//   col17 = "1. Іноземна мова"  col18 = "44*2"
+// And the NEXT data block (col17/18 in next "sub-row") gives "2. Іноземна мова" / "23*2"
+// We need to collect all numbered alternatives and merge auditoriums.
+function cleanSubject(raw) {
+  if (!raw) return null;
+  // Remove leading "1. " or "2. " numbering
+  return raw.replace(/^\d+\.\s*/, '').trim();
+}
+
+// ─── Main processor ───────────────────────────────────────────────────────────
+function processCSV(text) {
+  const rows = parseCSV(text);
+
+  // Verify it looks like our schedule (find header row with Е2-24)
+  const headerRow = rows.find(r => r.join(',').includes('Е2-24'));
+  if (!headerRow) {
+    throw new Error('Не знайдено колонку Е2-24. Перевірте, що це правильний файл розкладу.');
+  }
+
+  // Find group column dynamically from header
+  const headerIdx = rows.indexOf(headerRow);
+  const colIdx = headerRow.indexOf('Е2-24');
+  if (colIdx === -1) {
+    throw new Error('Колонка Е2-24 не знайдена в заголовку.');
+  }
+  // Subject col = colIdx, Aud col = colIdx + 1
+  const subjectCol = colIdx;
+  const audCol = colIdx + 1;
+
+  const schedule = {};
+  const DAYS = ['Понедельник','Вторник','Среда','Четверг','Пятница','Суббота','Воскресенье'];
+  DAYS.forEach(d => schedule[d] = []);
+
+  let currentDay = null;
+
+  // Data rows start after header row
+  for (let i = headerIdx + 1; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row || row.length < 3) continue;
+
+    // Detect day from column 0
+    const dayCell = (row[0] || '').trim();
+    if (dayCell) {
+      // e.g. "Пн, 04.05.26" or "Пт, 08.05.26"
+      const dayMatch = dayCell.match(/^([А-ЯҐЄІЇа-яґєії]+)/u);
+      if (dayMatch) {
+        const abbr = dayMatch[1];
+        currentDay = DAY_MAP[abbr] || null;
+      }
+    }
+
+    if (!currentDay) continue;
+
+    // Extract time
+    const time = extractTime(row);
+    if (!time) continue;
+
+    // Extract subject & auditorium for Е2-24
+    const rawSubject = (row[subjectCol] || '').trim();
+    const rawAud = (row[audCol] || '').trim();
+
+    if (!rawSubject) continue;
+
+    const subject = cleanSubject(rawSubject);
+    if (!subject) continue;
+
+    // Check for numbered alternatives (1. Subject) – look ahead for "2." variant
+    const isNumbered = /^\d+\./.test(rawSubject);
+    let finalAuds = [formatAud(rawAud)].filter(Boolean);
+
+    if (isNumbered && /^1\./.test(rawSubject)) {
+      // Look for the matching "2." in subsequent rows with same time (no day change)
+      for (let j = i + 1; j < rows.length && j <= i + 4; j++) {
+        const nextRow = rows[j];
+        if (!nextRow || nextRow.length < 3) continue;
+        const nextDay = (nextRow[0] || '').trim();
+        if (nextDay && DAY_MAP[nextDay.match(/^([А-ЯҐЄІЇа-яґєії]+)/u)?.[1]]) break; // new day
+
+        const nextSubj = (nextRow[subjectCol] || '').trim();
+        if (/^2\./.test(nextSubj) && cleanSubject(nextSubj) === subject) {
+          const nextAud = formatAud((nextRow[audCol] || '').trim());
+          if (nextAud && !finalAuds.includes(nextAud)) finalAuds.push(nextAud);
+        }
+      }
+    }
+
+    // Build entry string
+    let entry;
+    if (finalAuds.length === 0) {
+      entry = subject;
+    } else if (finalAuds.length === 1) {
+      entry = `${subject} (Ауд ${finalAuds[0]})`;
+    } else {
+      // Sort: smaller first for consistency
+      finalAuds.sort();
+      entry = `${subject} (Ауд ${finalAuds.join('/')})`;
+    }
+
+    // Avoid duplicate consecutive entries for same lesson (repeated rows)
+    const dayArr = schedule[currentDay];
+    const last = dayArr.length >= 2 ? dayArr[dayArr.length - 2] : null;
+    if (last === entry && dayArr[dayArr.length - 1] === time) {
+      // exact duplicate, skip
+      continue;
+    }
+
+    schedule[currentDay].push(entry);
+    schedule[currentDay].push(time);
+  }
+
+  // Replace Виробниче навчання days with hardcoded template
+  DAYS.forEach(d => {
+    if (schedule[d] && isVirobnacheDay(schedule[d])) {
+      schedule[d] = [...VIROBN_TEMPLATE];
+    }
+  });
+
+  // Fill missing slots at the start of each day
+  DAYS.forEach(d => {
+    if (schedule[d] && schedule[d].length > 0) {
+      schedule[d] = fillMissingSlots(schedule[d]);
+    }
+  });
+
+  // Remove empty days
+  DAYS.forEach(d => {
+    if (schedule[d].length === 0) delete schedule[d];
+  });
+
+  // Extract and normalize date range from first row (e.g. "04.05.26-08.05.26" → "04.05.26 - 08.05.26")
+  const dateRow = rows[0] || [];
+  const rawDate = (dateRow[0] || '').trim();
+  // Match two dates like DD.MM.YY separated by optional spaces and dash
+  const dateMatch = rawDate.match(/(\d{2}\.\d{2}\.\d{2})\s*[-–]\s*(\d{2}\.\d{2}\.\d{2})/);
+  const dateStr = dateMatch ? `${dateMatch[1]} - ${dateMatch[2]}` : rawDate;
+
+  return { date: dateStr, schedule };
+}
+
+// ─── Syntax-highlighted JSON render ──────────────────────────────────────────
+function syntaxHighlight(obj) {
+  const json = JSON.stringify(obj, null, 2);
+  return json
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, match => {
+      let cls = 'json-num';
+      if (/^"/.test(match)) {
+        cls = /:$/.test(match) ? 'json-key' : 'json-str';
+      } else if (/true|false/.test(match)) {
+        cls = 'json-bool';
+      } else if (/null/.test(match)) {
+        cls = 'json-null';
+      }
+      return `<span class="${cls}">${match}</span>`;
+    });
+}
+
+// ─── Render results ───────────────────────────────────────────────────────────
+function renderResult(data) {
+  resultJSON = data;
+
+  // Stats
+  const days = Object.keys(data.schedule);
+  const totalLessons = days.reduce((s, d) => s + data.schedule[d].length / 2, 0);
+  document.getElementById('statsRow').innerHTML = `
+    <div class="stat">Дні: <span>${days.length}</span></div>
+    <div class="stat">Пар: <span>${totalLessons}</span></div>
+    <div class="stat">Тиждень: <span>${data.date || '—'}</span></div>
+  `;
+
+  // JSON output — include date at top level
+  const fullOutput = { date: data.date || '', schedule: data.schedule };
+  document.getElementById('jsonOutput').innerHTML = syntaxHighlight(fullOutput);
+
+  // Day cards
+  const preview = document.getElementById('daysPreview');
+  preview.innerHTML = days.map(day => {
+    const lessons = data.schedule[day];
+    const names = [];
+    for (let i = 0; i < lessons.length; i += 2) names.push(lessons[i]);
+    const items = names.slice(0, 4).map(n => `<strong>${n}</strong>`).join('');
+    const more = names.length > 4 ? `<div style="color:var(--accent);font-size:10px;margin-top:4px">+${names.length-4} більше</div>` : '';
+    return `<div class="day-card">
+      <div class="day-name">${day}</div>
+      <div class="day-lessons">${items}${more}</div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('resultSection').classList.add('visible');
+}
+
+// ─── Download ─────────────────────────────────────────────────────────────────
+function downloadJSON() {
+  if (!resultJSON) return;
+  const output = { date: resultJSON.date || '', schedule: resultJSON.schedule };
+  const blob = new Blob([JSON.stringify(output, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `schedule_e2-24_${(resultJSON.date || 'export').replace(/\s/g,'')}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function copyJSON() {
+  if (!resultJSON) return;
+  const output = { date: resultJSON.date || '', schedule: resultJSON.schedule };
+  navigator.clipboard.writeText(JSON.stringify(output, null, 2))
+    .then(() => {
+      const btn = document.querySelector('.btn-secondary');
+      const orig = btn.textContent;
+      btn.textContent = '✓ Скопійовано';
+      setTimeout(() => btn.textContent = orig, 1500);
+    });
+}
+
+// ─── Status helper ────────────────────────────────────────────────────────────
+function showStatus(msg, type) {
+  const el = document.getElementById('statusMsg');
+  el.textContent = msg;
+  el.className = `status ${type}`;
+}
+
+// ─── File handling ────────────────────────────────────────────────────────────
+function handleFile(file) {
+  if (!file) return;
+
+  if (!file.name.toLowerCase().endsWith('.csv') && file.type !== 'text/csv') {
+    showStatus('❌ Помилка: файл має бути у форматі .csv', 'error');
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    const text = e.target.result;
+    if (!text || text.trim().length === 0) {
+      showStatus('❌ Помилка: файл порожній', 'error');
+      return;
+    }
+    try {
+      const data = processCSV(text);
+      const days = Object.keys(data.schedule);
+      if (days.length === 0) {
+        showStatus('⚠️ Попередження: не знайдено жодного уроку для Е2-24', 'error');
+        return;
+      }
+      showStatus(`✓ Успішно оброблено файл «${file.name}» — знайдено ${days.length} дні`, 'success');
+      renderResult(data);
+    } catch (err) {
+      showStatus(`❌ ${err.message}`, 'error');
+    }
+  };
+  reader.onerror = () => showStatus('❌ Не вдалося прочитати файл', 'error');
+  reader.readAsText(file, 'UTF-8');
+}
+
+// ─── Google Sheets URL → CSV export + download ───────────────────────────────
+function convertSheetsUrl(url) {
+  // Extract spreadsheet ID — the part between /d/ and the next /
+  const idMatch = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+  if (!idMatch) throw new Error('Не вдалося знайти ID таблиці. Перевірте посилання.');
+  const id = idMatch[1];
+
+  // Extract gid — can appear as ?gid=, &gid=, or #gid=
+  const gidMatch = url.match(/[?&#]gid=(\d+)/);
+  const gid = gidMatch ? gidMatch[1] : '0';
+
+  // Build the cleanest possible export URL — no extra params
+  return `https://docs.google.com/spreadsheets/d/${id}/export?format=csv&gid=${gid}`;
+}
+
+function fetchFromSheets() {
+  const urlInput = document.getElementById('sheetsUrl').value.trim();
+  if (!urlInput) {
+    showStatus('❌ Введіть посилання на таблицю', 'error');
+    return;
+  }
+  let exportUrl;
+  try {
+    exportUrl = convertSheetsUrl(urlInput);
+  } catch (e) {
+    showStatus(`❌ ${e.message}`, 'error');
+    return;
+  }
+
+  // Trigger CSV download — window.location forces actual download for Google export URLs
+  window.location.href = exportUrl;
+
+  showStatus(`✓ Посилання конвертовано → ${exportUrl.slice(0, 72)}… · Файл завантажується на ваш ПК`, 'success');
+
+  // Also show export URL for reference
+  const hint = document.querySelector('.url-hint');
+  hint.innerHTML = `<span style="color:var(--accent2)">CSV URL:</span> <a href="${exportUrl}" target="_blank" style="color:var(--muted);word-break:break-all;font-size:9px">${exportUrl}</a>`;
+}
+
+
+document.getElementById('fileInput').addEventListener('change', e => {
+  handleFile(e.target.files[0]);
+});
+
+const dropZone = document.getElementById('dropZone');
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  handleFile(e.dataTransfer.files[0]);
+});
+
+// ─── PWA: Inline Manifest ─────────────────────────────────────────────────────
+const manifest = {
+  name: "Розклад Е2-24 → JSON",
+  short_name: "Е2-24",
+  description: "Конвертер розкладу групи Е2-24 з CSV у JSON",
+  start_url: "./",
+  display: "standalone",
+  background_color: "#0a0d12",
+  theme_color: "#0a0d12",
+  orientation: "portrait-primary",
+  icons: [
+    {
+      src: "data:image/svg+xml," + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="80" fill="#0a0d12"/><rect x="60" y="60" width="392" height="392" rx="48" fill="#111520" stroke="#1e2a3d" stroke-width="4"/><text x="256" y="220" font-family="monospace" font-weight="900" font-size="120" fill="#3b82f6" text-anchor="middle">Е2</text><text x="256" y="360" font-family="monospace" font-weight="700" font-size="80" fill="#06b6d4" text-anchor="middle">24</text></svg>`),
+      sizes: "512x512",
+      type: "image/svg+xml",
+      purpose: "any maskable"
+    }
+  ]
+};
+
+const manifestBlob = new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' });
+const manifestUrl = URL.createObjectURL(manifestBlob);
+const manifestLink = document.createElement('link');
+manifestLink.rel = 'manifest';
+manifestLink.href = manifestUrl;
+document.head.appendChild(manifestLink);
+
+// ─── PWA: Inline Service Worker ───────────────────────────────────────────────
+if ('serviceWorker' in navigator) {
+  const swCode = `
+const CACHE = 'e2-24-v1';
+const ASSETS = [self.location.href.replace(/\\/[^\\/]*$/, '/') || '/'];
+
+self.addEventListener('install', e => {
+  e.waitUntil(
+    caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting())
+  );
+});
+
+self.addEventListener('activate', e => {
+  e.waitUntil(
+    caches.keys().then(keys =>
+      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+    ).then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener('fetch', e => {
+  e.respondWith(
+    caches.match(e.request).then(cached => cached || fetch(e.request))
+  );
+});
+`;
+  const swBlob = new Blob([swCode], { type: 'application/javascript' });
+  const swUrl = URL.createObjectURL(swBlob);
+  navigator.serviceWorker.register(swUrl, { type: 'classic' })
+    .then(() => console.log('[PWA] Service Worker зареєстровано'))
+    .catch(e => console.warn('[PWA] SW не підтримується в цьому контексті:', e.message));
+}
+</script>
+</body>
+</html>
